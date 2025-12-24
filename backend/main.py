@@ -42,16 +42,31 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-class GradeInput(BaseModel):
+class ComprehensiveEvaluationInput(BaseModel):
     student_id: int
-    course_id: int
-    regular_score: float
-    midterm_score: float
-    final_score: float
+    academic_year: str
+    semester: int
+    physical_score: Optional[float] = None
+    moral_score: Optional[float] = None
+    gpa: Optional[float] = None
+    academic_score: Optional[float] = None
+    innovation_basic_score: Optional[float] = None
+    innovation_bonus_score: Optional[float] = None
+    student_work_score: Optional[float] = None
+    social_service_score: Optional[float] = None
+    social_reward_score: Optional[float] = None
+    cultural_sports_score: Optional[float] = None
 
-class ScholarshipParams(BaseModel):
-    year: int
-    term: int
+class BonusDetailInput(BaseModel):
+    evaluation_id: int
+    category: str
+    item_name: str
+    score: float
+    description: Optional[str] = None
+
+class RankingParams(BaseModel):
+    academic_year: str
+    semester: int
 
 # --- API 接口编写 ---
 
@@ -109,86 +124,200 @@ def test_users():
     finally:
         conn.close()
 
-# 3. 老师录入成绩
-@app.post("/api/grades/add")
-def add_grade(data: GradeInput):
+# 3. 录入综合测评数据
+@app.post("/api/evaluation/add")
+def add_evaluation(data: ComprehensiveEvaluationInput):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 检查是否已存在，存在则更新，不存在则插入
-        # 这里为了简化，直接用 MERGE 或 简单的 IF EXISTS 逻辑
-        # 也可以直接插入，依赖数据库的 UNIQUE 约束报错
         sql = """
-        IF EXISTS (SELECT 1 FROM Grades WHERE StudentID=? AND CourseID=?)
-            UPDATE Grades SET RegularScore=?, MidtermScore=?, FinalScore=? 
-            WHERE StudentID=? AND CourseID=?
+        IF EXISTS (SELECT 1 FROM ComprehensiveEvaluations WHERE StudentID=? AND AcademicYear=? AND Semester=?)
+            UPDATE ComprehensiveEvaluations SET 
+                PhysicalScore=?, MoralScore=?, GPA=?, AcademicScore=?,
+                InnovationBasicScore=?, InnovationBonusScore=?,
+                StudentWorkScore=?, SocialServiceScore=?, SocialRewardScore=?,
+                CulturalSportsScore=?, UpdatedAt=GETDATE()
+            WHERE StudentID=? AND AcademicYear=? AND Semester=?
         ELSE
-            INSERT INTO Grades (StudentID, CourseID, RegularScore, MidtermScore, FinalScore)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO ComprehensiveEvaluations (
+                StudentID, AcademicYear, Semester, PhysicalScore, MoralScore, GPA, AcademicScore,
+                InnovationBasicScore, InnovationBonusScore, StudentWorkScore, 
+                SocialServiceScore, SocialRewardScore, CulturalSportsScore
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         cursor.execute(sql, 
-                       (data.student_id, data.course_id, data.regular_score, data.midterm_score, data.final_score,
-                        data.student_id, data.course_id,
-                        data.student_id, data.course_id, data.regular_score, data.midterm_score, data.final_score))
+                       (data.student_id, data.academic_year, data.semester,
+                        data.physical_score, data.moral_score, data.gpa, data.academic_score,
+                        data.innovation_basic_score, data.innovation_bonus_score,
+                        data.student_work_score, data.social_service_score, data.social_reward_score,
+                        data.cultural_sports_score,
+                        data.student_id, data.academic_year, data.semester,
+                        data.student_id, data.academic_year, data.semester,
+                        data.physical_score, data.moral_score, data.gpa, data.academic_score,
+                        data.innovation_basic_score, data.innovation_bonus_score,
+                        data.student_work_score, data.social_service_score, data.social_reward_score,
+                        data.cultural_sports_score))
         conn.commit()
-        return {"message": "成绩录入成功"}
+        return {"message": "综合测评数据录入成功"}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 
-# 4. [核心功能] 一键结算奖学金 (调用存储过程)
-@app.post("/api/scholarship/settle")
-def settle_scholarship(params: ScholarshipParams):
+# 4. 添加加分项目
+@app.post("/api/bonus/add")
+def add_bonus_detail(data: BonusDetailInput):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 调用我们在 SQL Server 里写的存储过程
-        sql = "{CALL sp_CalculateScholarship (?, ?)}"
-        cursor.execute(sql, (params.year, params.term))
+        sql = """
+        INSERT INTO BonusDetails (EvaluationID, Category, ItemName, Score, Description)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        cursor.execute(sql, (data.evaluation_id, data.category, data.item_name, 
+                           data.score, data.description))
         conn.commit()
-        return {"message": f"{params.year}学年第{params.term}学期奖学金计算完成"}
+        return {"message": "加分项目添加成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+# 5. 计算排名
+@app.post("/api/ranking/calculate")
+def calculate_rankings(params: RankingParams):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = "{CALL sp_CalculateRankings (?, ?)}"
+        cursor.execute(sql, (params.academic_year, params.semester))
+        conn.commit()
+        return {"message": f"{params.academic_year}学年第{params.semester}学期排名计算完成"}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 
-# 5. [核心功能] 导出 Excel (Pandas)
-@app.get("/api/export/grades")
-def export_grades(class_id: Optional[int] = None):
+# 6. 获取综测排名
+@app.get("/api/ranking/list")
+def get_rankings(academic_year: str, semester: int, limit: Optional[int] = 50):
+    conn = get_db_connection()
+    try:
+        query = """
+            SELECT TOP (?) 
+                ClassRank, StudentName, TotalScore, GPA, AcademicScore,
+                InnovationTotalScore, SocialTotalScore, CulturalSportsScore
+            FROM v_ComprehensiveEvaluationDetails
+            WHERE AcademicYear = ? AND Semester = ?
+            ORDER BY ClassRank
+        """
+        df = pd.read_sql(query, conn, params=(limit, academic_year, semester))
+        return {"rankings": df.to_dict('records')}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+# 7. 获取学生详细信息
+@app.get("/api/student/{student_id}")
+def get_student_detail(student_id: int, academic_year: str, semester: int):
+    conn = get_db_connection()
+    try:
+        # 获取基本信息
+        query = """
+            SELECT * FROM v_ComprehensiveEvaluationDetails
+            WHERE StudentID = ? AND AcademicYear = ? AND Semester = ?
+        """
+        df = pd.read_sql(query, conn, params=(student_id, academic_year, semester))
+        
+        if df.empty:
+            raise HTTPException(status_code=404, detail="学生数据不存在")
+        
+        student_info = df.iloc[0].to_dict()
+        
+        # 获取加分项目
+        bonus_query = """
+            SELECT bd.Category, bd.ItemName, bd.Score, bd.Description
+            FROM BonusDetails bd
+            JOIN ComprehensiveEvaluations ce ON bd.EvaluationID = ce.EvaluationID
+            WHERE ce.StudentID = ? AND ce.AcademicYear = ? AND ce.Semester = ?
+        """
+        bonus_df = pd.read_sql(bonus_query, conn, params=(student_id, academic_year, semester))
+        student_info['bonus_details'] = bonus_df.to_dict('records')
+        
+        return student_info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+# 8. [核心功能] 导出综测Excel
+@app.get("/api/export/comprehensive")
+def export_comprehensive(academic_year: str, semester: int, class_id: Optional[int] = None):
     conn = get_db_connection()
     
-    # 老师可以导出全班，通过 class_id 筛选，或者导出所有
     if class_id:
         query = """
-            SELECT s.StudentID, s.Name, c.ClassName, co.CourseName, g.TotalScore
-            FROM Grades g
-            JOIN Students s ON g.StudentID = s.StudentID
-            JOIN Classes c ON s.ClassID = c.ClassID
-            JOIN Courses co ON g.CourseID = co.CourseID
-            WHERE s.ClassID = ?
+            SELECT 
+                ClassRank as 班级排名,
+                StudentID as 学号,
+                StudentName as 姓名,
+                ClassName as 班级,
+                PhysicalScore as 体测成绩,
+                MoralScore as 品德表现,
+                GPA as 绩点,
+                AcademicScore as 学业成绩,
+                InnovationTotalScore as 创新实践,
+                SocialTotalScore as 社会实践,
+                CulturalSportsScore as 文体实践,
+                TotalScore as 总积分
+            FROM v_ComprehensiveEvaluationDetails
+            WHERE AcademicYear = ? AND Semester = ? AND StudentID IN (
+                SELECT StudentID FROM Students WHERE ClassID = ?
+            )
+            ORDER BY ClassRank
         """
-        df = pd.read_sql(query, conn, params=(class_id,))
+        df = pd.read_sql(query, conn, params=(academic_year, semester, class_id))
     else:
-        query = "SELECT * FROM Grades" # 简化，实际应关联表名
-        df = pd.read_sql(query, conn)
+        query = """
+            SELECT 
+                GradeRank as 年级排名,
+                ClassRank as 班级排名,
+                StudentID as 学号,
+                StudentName as 姓名,
+                ClassName as 班级,
+                PhysicalScore as 体测成绩,
+                MoralScore as 品德表现,
+                GPA as 绩点,
+                AcademicScore as 学业成绩,
+                InnovationTotalScore as 创新实践,
+                SocialTotalScore as 社会实践,
+                CulturalSportsScore as 文体实践,
+                TotalScore as 总积分
+            FROM v_ComprehensiveEvaluationDetails
+            WHERE AcademicYear = ? AND Semester = ?
+            ORDER BY GradeRank
+        """
+        df = pd.read_sql(query, conn, params=(academic_year, semester))
     
     conn.close()
     
     # 将 DataFrame 写入内存中的 Excel 文件
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='成绩单')
+        df.to_excel(writer, index=False, sheet_name=f'{academic_year}学年第{semester}学期综测')
     
     output.seek(0)
     
     # 返回文件流
     headers = {
-        'Content-Disposition': 'attachment; filename="grades_export.xlsx"'
+        'Content-Disposition': f'attachment; filename="comprehensive_evaluation_{academic_year}_S{semester}.xlsx"'
     }
-    return Response(content=output.getvalue(), headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return Response(content=output.getvalue(), headers=headers, 
+                   media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 if __name__ == "__main__":
     import uvicorn
