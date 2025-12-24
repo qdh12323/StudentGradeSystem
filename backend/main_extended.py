@@ -6,42 +6,19 @@ import pyodbc
 import pandas as pd
 import io
 from datetime import datetime
-import json
 
 app = FastAPI()
 
-# --- 配置 CORS (解决前后端跨域问题) ---
-# React 默认运行在 localhost:5173，必须允许它访问后端
+# --- 配置 CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # 允许所有来源，开发阶段方便
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# #region agent log
-def log_debug(location: str, message: str, data: dict, hypothesis_id: str):
-    """Append debug info to NDJSON log file for runtime tracing."""
-    try:
-        payload = {
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(datetime.now().timestamp() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": hypothesis_id
-        }
-        with open(r"d:\数据库\数据库课设\StudentGradeSystem\.cursor\debug.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        # 避免日志失败影响主逻辑
-        pass
-# #endregion
-
 # --- 数据库连接配置 ---
-# 注意：SERVER=./ 或 SERVER=localhost 通常可行，不行则填你的计算机名
 conn_str = (
     "DRIVER={ODBC Driver 17 for SQL Server};"
     "SERVER=localhost;" 
@@ -57,11 +34,37 @@ def get_db_connection():
         print(f"数据库连接失败: {e}")
         raise HTTPException(status_code=500, detail="数据库连接失败")
 
-# --- Pydantic 数据模型 (用于验证前端请求) ---
+# --- Pydantic 数据模型 ---
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class StudentInput(BaseModel):
+    student_id: int
+    name: str
+    class_id: int
+    major: str
+    gender: Optional[str] = None
+    birthdate: Optional[str] = None
+    hometown: Optional[str] = None
+    id_card: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    enrollment_date: Optional[str] = None
+    status: Optional[str] = "在读"
+
+class CourseInput(BaseModel):
+    course_code: str
+    course_name: str
+    credits: float
+    hours: int
+    course_type: Optional[str] = "必修"
+    department: Optional[str] = None
+    prerequisites: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = "开设"
 
 class ComprehensiveEvaluationInput(BaseModel):
     student_id: int
@@ -89,65 +92,38 @@ class RankingParams(BaseModel):
     academic_year: str
     semester: int
 
-# --- API 接口编写 ---
+# --- API 接口 ---
 
-# 1. 根路径测试
 @app.get("/")
 def read_root():
-    return {"message": "学生成绩管理系统后端已启动"}
+    return {"message": "学生成绩管理系统后端已启动 - 扩展版"}
 
-# 2. 登录接口 (简单的模拟验证)
+# === 用户认证相关 ===
+
 @app.post("/api/login")
 def login(request: LoginRequest):
-    # #region agent log
-    log_debug("main.py:82", "Login API called", {"username": request.username}, "H1")
-    # #endregion
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        # 先检查用户是否存在
         cursor.execute("SELECT UserID, Role, RelatedID, PasswordHash FROM Users WHERE Username=?", 
                        (request.username,))
         user = cursor.fetchone()
-        # #region agent log
-        log_debug("main.py:90", "User fetched from DB", {
-            "username": request.username,
-            "found": bool(user),
-            "role": getattr(user, "Role", None),
-            "related_id": getattr(user, "RelatedID", None)
-        }, "H2")
-        # #endregion
         
         if not user:
             raise HTTPException(status_code=401, detail="用户不存在")
         
-        # 检查密码（这里是明文比较，实际项目应该用哈希）
         if user.PasswordHash != request.password:
             raise HTTPException(status_code=401, detail="密码错误")
         
-        # #region agent log
-        log_debug("main.py:102", "Login success", {
-            "username": request.username,
-            "role": user.Role,
-            "related_id": user.RelatedID
-        }, "H3")
-        # #endregion
         return {"status": "success", "role": user.Role, "related_id": user.RelatedID}
         
     except Exception as e:
         print(f"登录错误: {e}")
-        # #region agent log
-        log_debug("main.py:110", "Login exception", {
-            "username": request.username,
-            "error": str(e)
-        }, "H4")
-        # #endregion
         raise HTTPException(status_code=500, detail=f"登录失败: {str(e)}")
     finally:
         conn.close()
 
-# 添加测试接口
 @app.get("/api/test/users")
 def test_users():
     """测试接口：查看所有用户"""
@@ -169,7 +145,280 @@ def test_users():
     finally:
         conn.close()
 
-# 3. 录入综合测评数据
+# === 学生信息管理 ===
+
+@app.post("/api/students/add")
+def add_student(data: StudentInput):
+    """新增学生"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 检查学号是否已存在
+        cursor.execute("SELECT COUNT(*) FROM Students WHERE StudentID = ?", (data.student_id,))
+        if cursor.fetchone()[0] > 0:
+            raise HTTPException(status_code=400, detail="学号已存在")
+        
+        sql = """
+        INSERT INTO Students (
+            StudentID, Name, ClassID, Major, Gender, Birthdate, Hometown, 
+            IDCard, Phone, Email, Address, EnrollmentDate, Status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(sql, (
+            data.student_id, data.name, data.class_id, data.major, data.gender,
+            data.birthdate, data.hometown, data.id_card, data.phone, data.email,
+            data.address, data.enrollment_date, data.status
+        ))
+        
+        # 创建用户账号
+        cursor.execute("""
+            INSERT INTO Users (Username, PasswordHash, Role, RelatedID)
+            VALUES (?, '123456', 'Student', ?)
+        """, (str(data.student_id), data.student_id))
+        
+        conn.commit()
+        return {"message": "学生添加成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/students/list")
+def get_students(page: int = 1, size: int = 20, search: Optional[str] = None):
+    """获取学生列表"""
+    conn = get_db_connection()
+    try:
+        offset = (page - 1) * size
+        
+        where_clause = ""
+        params = []
+        if search:
+            where_clause = "WHERE s.Name LIKE ? OR CAST(s.StudentID AS NVARCHAR) LIKE ? OR c.ClassName LIKE ?"
+            search_param = f"%{search}%"
+            params = [search_param, search_param, search_param]
+        
+        # 获取总数
+        count_sql = f"""
+            SELECT COUNT(*) FROM Students s
+            LEFT JOIN Classes c ON s.ClassID = c.ClassID
+            {where_clause}
+        """
+        total = pd.read_sql(count_sql, conn, params=params).iloc[0, 0]
+        
+        # 获取数据
+        data_sql = f"""
+            SELECT 
+                s.StudentID, s.Name, s.Major, s.Gender, s.Hometown, s.Phone, 
+                s.Email, s.EnrollmentDate, s.Status, c.ClassName,
+                s.CreatedAt, s.UpdatedAt
+            FROM Students s
+            LEFT JOIN Classes c ON s.ClassID = c.ClassID
+            {where_clause}
+            ORDER BY s.StudentID
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+        """
+        params.extend([offset, size])
+        df = pd.read_sql(data_sql, conn, params=params)
+        
+        return {
+            "students": df.to_dict('records'),
+            "total": int(total),
+            "page": page,
+            "size": size
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.put("/api/students/{student_id}")
+def update_student(student_id: int, data: StudentInput):
+    """修改学生信息"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+        UPDATE Students SET 
+            Name=?, ClassID=?, Major=?, Gender=?, Birthdate=?, Hometown=?,
+            IDCard=?, Phone=?, Email=?, Address=?, EnrollmentDate=?, Status=?,
+            UpdatedAt=GETDATE()
+        WHERE StudentID=?
+        """
+        cursor.execute(sql, (
+            data.name, data.class_id, data.major, data.gender, data.birthdate,
+            data.hometown, data.id_card, data.phone, data.email, data.address,
+            data.enrollment_date, data.status, student_id
+        ))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="学生不存在")
+        
+        conn.commit()
+        return {"message": "学生信息更新成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.delete("/api/students/{student_id}")
+def delete_student(student_id: int):
+    """删除学生（逻辑删除）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 逻辑删除，设置状态为已删除
+        cursor.execute("""
+            UPDATE Students SET Status='已删除', UpdatedAt=GETDATE() 
+            WHERE StudentID=?
+        """, (student_id,))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="学生不存在")
+        
+        # 禁用用户账号
+        cursor.execute("""
+            UPDATE Users SET PasswordHash='DISABLED' 
+            WHERE RelatedID=? AND Role='Student'
+        """, (student_id,))
+        
+        conn.commit()
+        return {"message": "学生删除成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+# === 课程信息管理 ===
+
+@app.post("/api/courses/add")
+def add_course(data: CourseInput):
+    """新增课程"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 检查课程编号是否已存在
+        cursor.execute("SELECT COUNT(*) FROM Courses WHERE CourseCode = ?", (data.course_code,))
+        if cursor.fetchone()[0] > 0:
+            raise HTTPException(status_code=400, detail="课程编号已存在")
+        
+        sql = """
+        INSERT INTO Courses (
+            CourseCode, CourseName, Credits, Hours, CourseType, 
+            Department, Prerequisites, Description, Status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(sql, (
+            data.course_code, data.course_name, data.credits, data.hours,
+            data.course_type, data.department, data.prerequisites, 
+            data.description, data.status
+        ))
+        
+        conn.commit()
+        return {"message": "课程添加成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/courses/list")
+def get_courses(page: int = 1, size: int = 20, search: Optional[str] = None):
+    """获取课程列表"""
+    conn = get_db_connection()
+    try:
+        offset = (page - 1) * size
+        
+        where_clause = ""
+        params = []
+        if search:
+            where_clause = "WHERE CourseCode LIKE ? OR CourseName LIKE ? OR Department LIKE ?"
+            search_param = f"%{search}%"
+            params = [search_param, search_param, search_param]
+        
+        # 获取总数
+        count_sql = f"SELECT COUNT(*) FROM Courses {where_clause}"
+        total = pd.read_sql(count_sql, conn, params=params).iloc[0, 0]
+        
+        # 获取数据
+        data_sql = f"""
+            SELECT 
+                CourseID, CourseCode, CourseName, Credits, Hours, CourseType,
+                Department, Prerequisites, Description, Status, CreatedAt, UpdatedAt
+            FROM Courses
+            {where_clause}
+            ORDER BY CourseCode
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+        """
+        params.extend([offset, size])
+        df = pd.read_sql(data_sql, conn, params=params)
+        
+        return {
+            "courses": df.to_dict('records'),
+            "total": int(total),
+            "page": page,
+            "size": size
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.put("/api/courses/{course_id}")
+def update_course(course_id: int, data: CourseInput):
+    """修改课程信息"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+        UPDATE Courses SET 
+            CourseCode=?, CourseName=?, Credits=?, Hours=?, CourseType=?,
+            Department=?, Prerequisites=?, Description=?, Status=?, UpdatedAt=GETDATE()
+        WHERE CourseID=?
+        """
+        cursor.execute(sql, (
+            data.course_code, data.course_name, data.credits, data.hours,
+            data.course_type, data.department, data.prerequisites,
+            data.description, data.status, course_id
+        ))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        
+        conn.commit()
+        return {"message": "课程信息更新成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.delete("/api/courses/{course_id}")
+def delete_course(course_id: int):
+    """删除课程（逻辑删除）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE Courses SET Status='已停开', UpdatedAt=GETDATE() 
+            WHERE CourseID=?
+        """, (course_id,))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        
+        conn.commit()
+        return {"message": "课程删除成功"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+# === 综合测评相关（保持原有功能） ===
+
 @app.post("/api/evaluation/add")
 def add_evaluation(data: ComprehensiveEvaluationInput):
     conn = get_db_connection()
@@ -210,7 +459,6 @@ def add_evaluation(data: ComprehensiveEvaluationInput):
     finally:
         conn.close()
 
-# 4. 添加加分项目
 @app.post("/api/bonus/add")
 def add_bonus_detail(data: BonusDetailInput):
     conn = get_db_connection()
@@ -230,7 +478,6 @@ def add_bonus_detail(data: BonusDetailInput):
     finally:
         conn.close()
 
-# 5. 计算排名
 @app.post("/api/ranking/calculate")
 def calculate_rankings(params: RankingParams):
     conn = get_db_connection()
@@ -246,11 +493,14 @@ def calculate_rankings(params: RankingParams):
     finally:
         conn.close()
 
-# 6. 获取综测排名
 @app.get("/api/ranking/list")
-def get_rankings(academic_year: str, semester: int, limit: Optional[int] = 50):
+def get_rankings(academic_year: str, semester: int, limit: Optional[int] = 50, role: Optional[str] = None):
     conn = get_db_connection()
     try:
+        # 学生角色只能看前10名
+        if role == 'Student' and (limit is None or limit > 10):
+            limit = 10
+            
         query = """
             SELECT TOP (?) 
                 ClassRank, StudentName, TotalScore, GPA, AcademicScore,
@@ -266,12 +516,10 @@ def get_rankings(academic_year: str, semester: int, limit: Optional[int] = 50):
     finally:
         conn.close()
 
-# 7. 获取学生详细信息
 @app.get("/api/student/{student_id}")
 def get_student_detail(student_id: int, academic_year: str, semester: int):
     conn = get_db_connection()
     try:
-        # 获取基本信息
         query = """
             SELECT * FROM v_ComprehensiveEvaluationDetails
             WHERE StudentID = ? AND AcademicYear = ? AND Semester = ?
@@ -283,7 +531,6 @@ def get_student_detail(student_id: int, academic_year: str, semester: int):
         
         student_info = df.iloc[0].to_dict()
         
-        # 获取加分项目
         bonus_query = """
             SELECT bd.Category, bd.ItemName, bd.Score, bd.Description
             FROM BonusDetails bd
@@ -299,7 +546,6 @@ def get_student_detail(student_id: int, academic_year: str, semester: int):
     finally:
         conn.close()
 
-# 8. [核心功能] 导出综测Excel
 @app.get("/api/export/comprehensive")
 def export_comprehensive(academic_year: str, semester: int, class_id: Optional[int] = None):
     conn = get_db_connection()
@@ -350,14 +596,12 @@ def export_comprehensive(academic_year: str, semester: int, class_id: Optional[i
     
     conn.close()
     
-    # 将 DataFrame 写入内存中的 Excel 文件
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name=f'{academic_year}学年第{semester}学期综测')
     
     output.seek(0)
     
-    # 返回文件流
     headers = {
         'Content-Disposition': f'attachment; filename="comprehensive_evaluation_{academic_year}_S{semester}.xlsx"'
     }
@@ -366,5 +610,4 @@ def export_comprehensive(academic_year: str, semester: int, class_id: Optional[i
 
 if __name__ == "__main__":
     import uvicorn
-    # 启动服务器，端口 8000
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8001)

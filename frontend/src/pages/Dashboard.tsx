@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Table, Button, Modal, Form, InputNumber, message, Card, Row, Col, Tag } from 'antd';
 import { 
   UserOutlined, BookOutlined, LogoutOutlined, DollarOutlined, 
-  FileExcelOutlined, PlusOutlined, TrophyOutlined, BarChartOutlined, BugOutlined 
+  FileExcelOutlined, PlusOutlined, TrophyOutlined, BarChartOutlined, BugOutlined,
+  TeamOutlined, ReadOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import ComprehensiveEvaluation from './ComprehensiveEvaluation';
+import StudentManagement from './StudentManagement';
+import CourseManagement from './CourseManagement';
 import TestPage from './TestPage';
 
 import { UserState } from '../App';
@@ -92,7 +95,11 @@ export default function Dashboard({ user }: DashboardProps) {
   const renderContent = () => {
     switch (currentPage) {
       case 'comprehensive':
-        return <ComprehensiveEvaluation />;
+        return <ComprehensiveEvaluation user={user} />;
+      case 'students':
+        return <StudentManagement user={user} />;
+      case 'courses':
+        return <CourseManagement user={user} />;
       case 'test':
         return <TestPage />;
       case 'grades':
@@ -160,6 +167,10 @@ export default function Dashboard({ user }: DashboardProps) {
           items={[
             { key: 'grades', icon: <BookOutlined />, label: '成绩管理' },
             { key: 'comprehensive', icon: <TrophyOutlined />, label: '综合测评' },
+            ...(user.role === 'Admin' ? [
+              { key: 'students', icon: <TeamOutlined />, label: '学生管理' },
+              { key: 'courses', icon: <ReadOutlined />, label: '课程管理' }
+            ] : []),
             { key: 'test', icon: <BugOutlined />, label: '系统测试' },
             { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
           ]} 
