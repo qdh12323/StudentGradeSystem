@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Table, Button, Modal, Form, InputNumber, message, Card, Row, Col, Tag } from 'antd';
-import { UserOutlined, BookOutlined, LogoutOutlined, DollarOutlined, FileExcelOutlined, PlusOutlined } from '@ant-design/icons';
+import { 
+  UserOutlined, BookOutlined, LogoutOutlined, DollarOutlined, 
+  FileExcelOutlined, PlusOutlined, TrophyOutlined, BarChartOutlined 
+} from '@ant-design/icons';
 import axios from 'axios';
+import ComprehensiveEvaluation from './ComprehensiveEvaluation';
 
 import { UserState } from '../App';
 
@@ -14,6 +18,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState([]); // 表格数据
+  const [currentPage, setCurrentPage] = useState('grades'); // 当前页面
 
   // 定义表格列
   const columns = [
@@ -82,16 +87,79 @@ export default function Dashboard({ user }: DashboardProps) {
     window.open(`http://127.0.0.1:8000/api/export/grades?class_id=${user.role === 'Teacher' ? '' : 'my'}`, '_blank');
   };
 
+  // 渲染页面内容
+  const renderContent = () => {
+    switch (currentPage) {
+      case 'comprehensive':
+        return <ComprehensiveEvaluation />;
+      case 'grades':
+      default:
+        return (
+          <>
+            {/* 只有老师可见的操作区 */}
+            {user.role === 'Teacher' && (
+              <Card style={{ marginBottom: 20, background: '#fafafa' }} bordered={false}>
+                <Row gutter={16}>
+                  <Col>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>
+                      录入/修改成绩
+                    </Button>
+                  </Col>
+                  <Col>
+                    <Button loading={loading} icon={<DollarOutlined />} onClick={handleSettle}>
+                      一键结算奖学金
+                    </Button>
+                  </Col>
+                  <Col>
+                     <Button icon={<FileExcelOutlined />} onClick={handleExport}>
+                       导出 Excel 报表
+                     </Button>
+                  </Col>
+                </Row>
+              </Card>
+            )}
+
+            <Table 
+              dataSource={data} 
+              columns={columns} 
+              rowKey="StudentID"
+              locale={{ emptyText: '暂无数据，请先录入或在 main.py 实现列表接口' }}
+            />
+
+            {/* 录入弹窗 */}
+            <Modal title="录入成绩" open={isModalOpen} onCancel={() => setIsModalOpen(false)} footer={null}>
+              <Form onFinish={handleAddGrade} layout="vertical">
+                <Form.Item label="学生学号" name="student_id" required rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} placeholder="例如: 20250001" /></Form.Item>
+                <Form.Item label="课程ID" name="course_id" required rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} placeholder="例如: 1" /></Form.Item>
+                <Row gutter={16}>
+                  <Col span={8}><Form.Item label="平时 (10%)" name="regular"><InputNumber max={100} min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col span={8}><Form.Item label="期中 (30%)" name="midterm"><InputNumber max={100} min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col span={8}><Form.Item label="期末 (60%)" name="final"><InputNumber max={100} min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                </Row>
+                <Button type="primary" htmlType="submit" block>提交保存</Button>
+              </Form>
+            </Modal>
+          </>
+        );
+    }
+  };
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider theme="light" collapsible>
         <div style={{ height: 64, margin: 16, background: '#f0f2f5', textAlign:'center', lineHeight:'64px', fontWeight:'bold' }}>
            Grade System
         </div>
-        <Menu mode="inline" defaultSelectedKeys={['1']} items={[
-          { key: '1', icon: <BookOutlined />, label: '成绩管理' },
-          { key: '2', icon: <UserOutlined />, label: '个人中心' },
-        ]} />
+        <Menu 
+          mode="inline" 
+          selectedKeys={[currentPage]} 
+          onClick={({ key }) => setCurrentPage(key)}
+          items={[
+            { key: 'grades', icon: <BookOutlined />, label: '成绩管理' },
+            { key: 'comprehensive', icon: <TrophyOutlined />, label: '综合测评' },
+            { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
+          ]} 
+        />
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -99,51 +167,7 @@ export default function Dashboard({ user }: DashboardProps) {
           <Button type="text" icon={<LogoutOutlined />} href="/login">退出</Button>
         </Header>
         <Content style={{ margin: '24px 16px', padding: 24, background: '#fff' }}>
-          
-          {/* 只有老师可见的操作区 */}
-          {user.role === 'Teacher' && (
-            <Card style={{ marginBottom: 20, background: '#fafafa' }} bordered={false}>
-              <Row gutter={16}>
-                <Col>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>
-                    录入/修改成绩
-                  </Button>
-                </Col>
-                <Col>
-                  <Button loading={loading} icon={<DollarOutlined />} onClick={handleSettle}>
-                    一键结算奖学金
-                  </Button>
-                </Col>
-                <Col>
-                   <Button icon={<FileExcelOutlined />} onClick={handleExport}>
-                     导出 Excel 报表
-                   </Button>
-                </Col>
-              </Row>
-            </Card>
-          )}
-
-          <Table 
-            dataSource={data} 
-            columns={columns} 
-            rowKey="StudentID"
-            locale={{ emptyText: '暂无数据，请先录入或在 main.py 实现列表接口' }}
-          />
-
-          {/* 录入弹窗 */}
-          <Modal title="录入成绩" open={isModalOpen} onCancel={() => setIsModalOpen(false)} footer={null}>
-            <Form onFinish={handleAddGrade} layout="vertical">
-              <Form.Item label="学生学号" name="student_id" required rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} placeholder="例如: 20250001" /></Form.Item>
-              <Form.Item label="课程ID" name="course_id" required rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} placeholder="例如: 1" /></Form.Item>
-              <Row gutter={16}>
-                <Col span={8}><Form.Item label="平时 (10%)" name="regular"><InputNumber max={100} min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item label="期中 (30%)" name="midterm"><InputNumber max={100} min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item label="期末 (60%)" name="final"><InputNumber max={100} min={0} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Button type="primary" htmlType="submit" block>提交保存</Button>
-            </Form>
-          </Modal>
-
+          {renderContent()}
         </Content>
       </Layout>
     </Layout>
