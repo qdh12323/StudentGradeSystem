@@ -1,29 +1,49 @@
 # 学生成绩管理系统
 
-一个基于 React + FastAPI + SQL Server 的学生成绩管理系统，支持成绩录入、奖学金计算和数据导出功能。
+一个基于 React + FastAPI + SQL Server 的完整学生综合测评管理系统，支持成绩录入、综合测评、排名计算和数据导出功能。
 
 ## 🚀 功能特性
 
-- **用户管理**: 支持学生和教师两种角色登录
-- **成绩管理**: 教师可录入和管理学生成绩
-- **奖学金计算**: 一键计算学期奖学金
-- **数据导出**: 支持Excel格式导出成绩单
-- **学生信息**: 包含绩点(GPA)和总积分管理
+- **用户管理**: 支持学生、教师、管理员三种角色
+- **综合测评**: 完整的综测评分体系（体测、品德、学业、创新实践、社会实践、文体实践）
+- **加分管理**: 详细的加分项目分类和管理
+- **排名计算**: 自动计算班级和年级排名
+- **数据导出**: 支持Excel格式的综测报表导出
+- **成绩管理**: 传统的课程成绩录入和查询
 
 ## 🛠️ 技术栈
 
 ### 前端
-- React 18
-- TypeScript
-- Ant Design
-- Vite
-- React Router
+- React 18 + TypeScript
+- Ant Design UI组件库
+- React Router 路由管理
+- Axios HTTP客户端
+- Vite 构建工具
 
 ### 后端
 - Python FastAPI
-- SQL Server
-- pyodbc
-- pandas
+- SQL Server 数据库
+- pyodbc 数据库连接
+- pandas 数据处理
+- openpyxl Excel处理
+
+## 📊 数据库设计
+
+### 核心表结构
+- **Students**: 学生基础信息
+- **ComprehensiveEvaluations**: 综合测评主表
+- **BonusDetails**: 加分项目详情表
+- **Classes**: 班级信息
+- **Users**: 用户账号管理
+
+### 评分体系
+```
+总积分(P) = 学业成绩(X) + 创新实践(C) + 社会实践(S) + 文体实践(W)
+
+其中：
+- 创新实践(C) = C1(基本分) + C2(加分)
+- 社会实践(S) = S1(学生工作) + S2(社会服务) + S3(奖励加分)
+```
 
 ## 📦 项目结构
 
@@ -55,14 +75,15 @@ StudentGradeSystem/
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/yourusername/StudentGradeSystem.git
+git clone https://github.com/qdh12323/StudentGradeSystem.git
 cd StudentGradeSystem
 ```
 
 ### 2. 数据库设置
 
 1. 在SQL Server中创建数据库 `GradeSystemDB`
-2. 执行 `database/import_real_students_with_gpa.sql` 脚本导入学生数据
+2. 执行 `database/comprehensive_evaluation_schema.sql` 创建表结构
+3. 执行 `database/import_comprehensive_data.sql` 导入测试数据
 
 ### 3. 后端设置
 
@@ -74,7 +95,7 @@ venv\Scripts\activate
 # Linux/Mac
 source venv/bin/activate
 
-pip install fastapi uvicorn pyodbc pandas openpyxl
+pip install -r requirements.txt
 python main.py
 ```
 
@@ -90,24 +111,47 @@ npm run dev
 
 前端将在 http://localhost:5173 启动
 
+### 5. 一键启动（Windows）
+
+```bash
+# 双击运行
+start_dev.bat
+```
+
 ## 📝 使用说明
 
 ### 登录账号
 
-- **教师账号**: 
-  - 用户名: `teacher1` 密码: `123456`
-  - 用户名: `admin` 密码: `admin123`
-
-- **学生账号**: 
-  - 用户名: 学号 (如: `3124001485`)
-  - 密码: `123456`
+- **管理员**: 用户名 `admin` 密码 `admin123`
+- **教师**: 用户名 `teacher1` 密码 `123456`
+- **学生**: 用户名为学号 (如: `3124001479`) 密码 `123456`
 
 ### 主要功能
 
-1. **成绩录入**: 教师登录后可以录入学生的平时成绩、期中成绩和期末成绩
-2. **奖学金计算**: 系统可以根据成绩自动计算奖学金
-3. **数据导出**: 支持将成绩数据导出为Excel文件
-4. **学生查询**: 学生可以查看自己的成绩和绩点信息
+1. **综合测评录入**: 支持完整的综测评分体系录入
+2. **加分项目管理**: 分类管理各种加分项目
+3. **排名计算**: 自动计算班级和年级排名
+4. **数据导出**: 导出完整的综测Excel报表
+5. **成绩管理**: 传统的课程成绩管理功能
+
+## 🎯 综合测评体系
+
+### 评分项目
+- **T**: 体测成绩
+- **D**: 品德表现评价分
+- **X**: 学业成绩考核分
+- **C**: 创新实践评分 (C1基本分 + C2加分)
+- **S**: 社会实践评分 (S1学生工作 + S2社会服务 + S3奖励)
+- **W**: 文体实践评分
+- **P**: 总积分
+
+### 加分类别
+- **C1**: 创新实践基本分
+- **C2**: 创新实践加分
+- **S1**: 学生工作加分
+- **S2**: 社会服务加分
+- **S3**: 社会服务奖励加分
+- **W**: 文体实践评分
 
 ## 🔧 配置说明
 
@@ -128,9 +172,12 @@ conn_str = (
 
 - `GET /` - 健康检查
 - `POST /api/login` - 用户登录
-- `POST /api/grades/add` - 添加成绩
-- `POST /api/scholarship/settle` - 计算奖学金
-- `GET /api/export/grades` - 导出成绩
+- `POST /api/evaluation/add` - 录入综测数据
+- `POST /api/bonus/add` - 添加加分项目
+- `POST /api/ranking/calculate` - 计算排名
+- `GET /api/ranking/list` - 获取排名列表
+- `GET /api/student/{id}` - 获取学生详情
+- `GET /api/export/comprehensive` - 导出综测Excel
 
 ## 🤝 贡献指南
 
@@ -144,12 +191,14 @@ conn_str = (
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
 
-## 👥 作者
+## 👥 开发团队
 
-- **你的姓名** - *初始工作* - [你的GitHub](https://github.com/yourusername)
+- **邓浩强** - *项目负责人* - [qdh12323](https://github.com/qdh12323)
+- **同学** - *前端开发* - 待添加
 
 ## 🙏 致谢
 
-- 感谢所有为这个项目做出贡献的人
+- 感谢2024级数据科学与大数据技术2班全体同学提供真实数据
 - 使用了 Ant Design 组件库
 - 基于 FastAPI 和 React 技术栈
+- 感谢广东工业大学自动化学院的支持
