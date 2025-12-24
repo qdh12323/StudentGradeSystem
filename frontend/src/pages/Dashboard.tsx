@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Table, Button, Modal, Form, InputNumber, message, Card, Row, Col, Tag } from 'antd';
 import { 
   UserOutlined, BookOutlined, LogoutOutlined, DollarOutlined, 
-  FileExcelOutlined, PlusOutlined, TrophyOutlined, BarChartOutlined 
+  FileExcelOutlined, PlusOutlined, TrophyOutlined, BarChartOutlined, BugOutlined 
 } from '@ant-design/icons';
 import axios from 'axios';
 import ComprehensiveEvaluation from './ComprehensiveEvaluation';
+import TestPage from './TestPage';
 
 import { UserState } from '../App';
 
@@ -92,6 +93,8 @@ export default function Dashboard({ user }: DashboardProps) {
     switch (currentPage) {
       case 'comprehensive':
         return <ComprehensiveEvaluation />;
+      case 'test':
+        return <TestPage />;
       case 'grades':
       default:
         return (
@@ -157,6 +160,7 @@ export default function Dashboard({ user }: DashboardProps) {
           items={[
             { key: 'grades', icon: <BookOutlined />, label: '成绩管理' },
             { key: 'comprehensive', icon: <TrophyOutlined />, label: '综合测评' },
+            { key: 'test', icon: <BugOutlined />, label: '系统测试' },
             { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
           ]} 
         />
