@@ -232,4 +232,3 @@ export default function ComprehensiveEvaluation({ user }: ComprehensiveEvaluatio
     </div>
   );
 }
-

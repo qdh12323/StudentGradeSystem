@@ -158,7 +158,7 @@ export default function Dashboard({ user }: DashboardProps) {
     <Layout style={{ minHeight: '100vh' }}>
       <Sider theme="light" collapsible>
         <div style={{ height: 64, margin: 16, background: '#f0f2f5', textAlign:'center', lineHeight:'64px', fontWeight:'bold' }}>
-           大数据2班管理系统
+           Grade System
         </div>
         <Menu 
           mode="inline" 
