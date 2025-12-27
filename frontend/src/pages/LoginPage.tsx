@@ -39,7 +39,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
-      <Card title="学生成绩管理系统 - 登录" style={{ width: 400 }}>
+      <Card title="大数据2班管理系统 - 登录" style={{ width: 400 }}>
         <Form
           name="login"
           onFinish={handleLogin}
