@@ -96,7 +96,7 @@ class RankingParams(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"message": "学生成绩管理系统后端已启动 - 扩展版"}
+    return {"message": "大数据2班管理系统后端已启动 - 扩展版"}
 
 # === 用户认证相关 ===
 
